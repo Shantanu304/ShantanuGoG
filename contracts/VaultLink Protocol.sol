@@ -1,20 +1,4 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
-
-/**
- * @title VaultLink
- * @notice A decentralized digital vault that allows users to securely store,
- *         manage, and share encrypted data references (like IPFS hashes) with
- *         access control mechanisms.
- */
-contract Project {
-    address public admin;
-    uint256 public vaultCount;
-
-    struct Vault {
-        uint256 id;
-        address owner;
-        string dataHash; // IPFS or encrypted data reference
+IPFS or encrypted data reference
         string label;
         bool shared;
         address sharedWith;
@@ -119,3 +103,6 @@ contract Project {
         return userVaults[_owner];
     }
 }
+// 
+End
+// 
