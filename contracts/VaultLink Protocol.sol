@@ -1,24 +1,38 @@
-IPFS or encrypted data reference
-        string label;
-        bool shared;
-        address sharedWith;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.26;
+
+/**
+ * @title VaultLinkProtocol
+ * @notice A protocol to link multiple vaults together, enabling shared access and relational mapping.
+ */
+contract VaultLinkProtocol {
+
+    address public admin;
+    uint256 public vaultCount;
+
+    struct Vault {
+        uint256 id;
+        address owner;
+        string dataHash;
+        string metadataURI;
         uint256 timestamp;
+        uint256[] linkedVaults;
     }
 
     mapping(uint256 => Vault) public vaults;
     mapping(address => uint256[]) public userVaults;
 
-    event VaultCreated(uint256 indexed id, address indexed owner, string label);
-    event VaultShared(uint256 indexed id, address indexed sharedWith);
-    event VaultRevoked(uint256 indexed id, address indexed revokedFrom);
+    event VaultCreated(uint256 indexed id, address indexed owner, string dataHash, string metadataURI);
+    event VaultLinked(uint256 indexed fromId, uint256 indexed toId);
+    event AdminChanged(address indexed oldAdmin, address indexed newAdmin);
 
     modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin can perform this action");
+        require(msg.sender == admin, "VaultLinkProtocol: NOT_ADMIN");
         _;
     }
 
-    modifier onlyOwner(uint256 _id) {
-        require(vaults[_id].owner == msg.sender, "Not the vault owner");
+    modifier vaultExists(uint256 id) {
+        require(id > 0 && id <= vaultCount, "VaultLinkProtocol: VAULT_NOT_FOUND");
         _;
     }
 
@@ -26,83 +40,47 @@ IPFS or encrypted data reference
         admin = msg.sender;
     }
 
-    /**
-     * @notice Create a new encrypted vault entry
-     * @param _dataHash Encrypted or IPFS data hash
-     * @param _label A short label or identifier for the vault
-     */
-    function createVault(string memory _dataHash, string memory _label) external {
-        require(bytes(_dataHash).length > 0, "Data hash required");
-        require(bytes(_label).length > 0, "Label required");
+    function createVault(string calldata dataHash, string calldata metadataURI) external returns (uint256) {
+        require(bytes(dataHash).length > 0, "VaultLinkProtocol: EMPTY_HASH");
 
         vaultCount++;
         vaults[vaultCount] = Vault({
             id: vaultCount,
             owner: msg.sender,
-            dataHash: _dataHash,
-            label: _label,
-            shared: false,
-            sharedWith: address(0),
-            timestamp: block.timestamp
+            dataHash: dataHash,
+            metadataURI: metadataURI,
+            timestamp: block.timestamp,
+            linkedVaults: new uint256 
         });
 
         userVaults[msg.sender].push(vaultCount);
 
-        emit VaultCreated(vaultCount, msg.sender, _label);
+        emit VaultCreated(vaultCount, msg.sender, dataHash, metadataURI);
+        return vaultCount;
     }
 
-    /**
-     * @notice Share a vault with another address
-     * @param _id Vault ID
-     * @param _sharedWith Address to share with
-     */
-    function shareVault(uint256 _id, address _sharedWith) external onlyOwner(_id) {
-        Vault storage vault = vaults[_id];
-        require(!vault.shared, "Vault already shared");
-        require(_sharedWith != address(0), "Invalid address");
+    function linkVaults(uint256 fromId, uint256 toId) external vaultExists(fromId) vaultExists(toId) {
+        require(fromId != toId, "VaultLinkProtocol: SELF_LINK");
+        require(vaults[fromId].owner == msg.sender || msg.sender == admin, "VaultLinkProtocol: UNAUTHORIZED");
 
-        vault.shared = true;
-        vault.sharedWith = _sharedWith;
+        vaults[fromId].linkedVaults.push(toId);
+        vaults[toId].linkedVaults.push(fromId);
 
-        emit VaultShared(_id, _sharedWith);
+        emit VaultLinked(fromId, toId);
+        emit VaultLinked(toId, fromId);
     }
 
-    /**
-     * @notice Revoke shared access to a vault
-     * @param _id Vault ID
-     */
-    function revokeVault(uint256 _id) external onlyOwner(_id) {
-        Vault storage vault = vaults[_id];
-        require(vault.shared, "Vault not shared");
-
-        address prevSharedWith = vault.sharedWith;
-        vault.shared = false;
-        vault.sharedWith = address(0);
-
-        emit VaultRevoked(_id, prevSharedWith);
+    function getVault(uint256 id) external view vaultExists(id) returns (Vault memory) {
+        return vaults[id];
     }
 
-    /**
-     * @notice Retrieve vault details (owner or shared user only)
-     * @param _id Vault ID
-     */
-    function getVault(uint256 _id) external view returns (Vault memory) {
-        Vault memory v = vaults[_id];
-        require(
-            msg.sender == v.owner || msg.sender == v.sharedWith,
-            "Access denied"
-        );
-        return v;
+    function getUserVaults(address user) external view returns (uint256[] memory) {
+        return userVaults[user];
     }
 
-    /**
-     * @notice Get all vault IDs owned by a specific address
-     * @param _owner Address of the vault owner
-     */
-    function getVaultsByOwner(address _owner) external view returns (uint256[] memory) {
-        return userVaults[_owner];
+    function changeAdmin(address newAdmin) external onlyAdmin {
+        require(newAdmin != address(0), "VaultLinkProtocol: ZERO_ADMIN");
+        emit AdminChanged(admin, newAdmin);
+        admin = newAdmin;
     }
 }
-// 
-End
-// 
